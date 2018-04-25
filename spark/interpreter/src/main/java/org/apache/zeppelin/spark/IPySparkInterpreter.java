@@ -19,12 +19,15 @@ package org.apache.zeppelin.spark;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.zeppelin.interpreter.BaseZeppelinContext;
 import org.apache.zeppelin.interpreter.Interpreter;
 import org.apache.zeppelin.interpreter.InterpreterContext;
 import org.apache.zeppelin.interpreter.InterpreterException;
+import org.apache.zeppelin.interpreter.InterpreterResult;
 import org.apache.zeppelin.interpreter.LazyOpenInterpreter;
 import org.apache.zeppelin.interpreter.WrappedInterpreter;
 import org.apache.zeppelin.python.IPythonInterpreter;
+import org.apache.zeppelin.python.PythonInterpreter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,8 +50,8 @@ public class IPySparkInterpreter extends IPythonInterpreter {
 
   @Override
   public void open() throws InterpreterException {
-    setProperty("zeppelin.python",
-        PySparkInterpreter.getPythonExec(getProperties()));
+    PySparkInterpreter pySparkInterpreter = getPySparkInterpreter();
+    setProperty("zeppelin.python", pySparkInterpreter.getPythonExec());
     sparkInterpreter = getSparkInterpreter();
     SparkConf conf = sparkInterpreter.getSparkContext().getConf();
     // only set PYTHONPATH in embedded, local or yarn-client mode.
@@ -92,6 +95,31 @@ public class IPySparkInterpreter extends IPythonInterpreter {
     return spark;
   }
 
+  private PySparkInterpreter getPySparkInterpreter() throws InterpreterException {
+    PySparkInterpreter pySpark = null;
+    Interpreter p = getInterpreterInTheSameSessionByClassName(PySparkInterpreter.class.getName());
+    while (p instanceof WrappedInterpreter) {
+      p = ((WrappedInterpreter) p).getInnerInterpreter();
+    }
+    pySpark = (PySparkInterpreter) p;
+    return pySpark;
+  }
+
+  @Override
+  public BaseZeppelinContext buildZeppelinContext() {
+    return sparkInterpreter.getZeppelinContext();
+  }
+
+  @Override
+  public InterpreterResult interpret(String st, InterpreterContext context) {
+    InterpreterContext.set(context);
+    sparkInterpreter.populateSparkWebUrl(context);
+    String jobGroupId = Utils.buildJobGroupId(context);
+    String jobDesc = "Started by: " + Utils.getUserName(context.getAuthenticationInfo());
+    String setJobGroupStmt = "sc.setJobGroup('" +  jobGroupId + "', '" + jobDesc + "')";
+    return super.interpret(setJobGroupStmt +"\n" + st, context);
+  }
+
   @Override
   public void cancel(InterpreterContext context) throws InterpreterException {
     super.cancel(context);
@@ -100,6 +128,7 @@ public class IPySparkInterpreter extends IPythonInterpreter {
 
   @Override
   public void close() throws InterpreterException {
+    LOGGER.info("Close IPySparkInterpreter");
     super.close();
     if (sparkInterpreter != null) {
       sparkInterpreter.close();

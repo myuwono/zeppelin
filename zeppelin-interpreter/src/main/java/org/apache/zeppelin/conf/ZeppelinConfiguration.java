@@ -347,8 +347,16 @@ public class ZeppelinConfiguration extends XMLConfiguration {
     return getString(ConfVars.ZEPPELIN_NOTEBOOK_DIR);
   }
 
+  public String getPluginsDir() {
+    return getRelativeDir(getString(ConfVars.ZEPPELIN_PLUGINS_DIR));
+  }
+
   public String getRecoveryDir() {
     return getRelativeDir(ConfVars.ZEPPELIN_RECOVERY_DIR);
+  }
+
+  public String getNotebookStorageClass() {
+    return getString(ConfVars.ZEPPELIN_NOTEBOOK_STORAGE);
   }
 
   public String getRecoveryStorageClass() {
@@ -360,15 +368,19 @@ public class ZeppelinConfiguration extends XMLConfiguration {
         "org.apache.zeppelin.interpreter.recovery.NullRecoveryStorage");
   }
 
-  public String getUser() {
+  public String getGCSStorageDir() {
+    return getString(ConfVars.ZEPPELIN_NOTEBOOK_GCS_STORAGE_DIR);
+  }
+
+  public String getS3User() {
     return getString(ConfVars.ZEPPELIN_NOTEBOOK_S3_USER);
   }
 
-  public String getBucketName() {
+  public String getS3BucketName() {
     return getString(ConfVars.ZEPPELIN_NOTEBOOK_S3_BUCKET);
   }
 
-  public String getEndpoint() {
+  public String getS3Endpoint() {
     return getString(ConfVars.ZEPPELIN_NOTEBOOK_S3_ENDPOINT);
   }
 
@@ -505,6 +517,10 @@ public class ZeppelinConfiguration extends XMLConfiguration {
     return getBoolean(ConfVars.ZEPPELIN_ANONYMOUS_ALLOWED);
   }
 
+  public boolean isUsernameForceLowerCase() {
+    return getBoolean(ConfVars.ZEPPELIN_USERNAME_FORCE_LOWERCASE);
+  }
+
   public boolean isNotebookPublic() {
     return getBoolean(ConfVars.ZEPPELIN_NOTEBOOK_PUBLIC);
   }
@@ -520,7 +536,13 @@ public class ZeppelinConfiguration extends XMLConfiguration {
           "conf directory " + ConfVars.ZEPPELIN_CONF_DIR.varName);
       return getConfDir();
     }
-    return fsConfigDir;
+    if (getString(ConfVars.ZEPPELIN_CONFIG_STORAGE_CLASS)
+                .equals("org.apache.zeppelin.storage.LocalConfigStorage")) {
+      // only apply getRelativeDir when it is LocalConfigStorage
+      return getRelativeDir(fsConfigDir);
+    } else {
+      return fsConfigDir;
+    }
   }
 
   public List<String> getAllowedOrigins()
@@ -575,6 +597,26 @@ public class ZeppelinConfiguration extends XMLConfiguration {
 
   public String getZeppelinNotebookGitRemoteOrigin() {
     return getString(ConfVars.ZEPPELIN_NOTEBOOK_GIT_REMOTE_ORIGIN);
+  }
+
+  public Boolean isZeppelinNotebookCronEnable() {
+    return getBoolean(ConfVars.ZEPPELIN_NOTEBOOK_CRON_ENABLE);
+  }
+
+  public String getZeppelinNotebookCronFolders() {
+    return getString(ConfVars.ZEPPELIN_NOTEBOOK_CRON_FOLDERS);
+  }
+
+  public String getZeppelinProxyUrl() {
+    return getString(ConfVars.ZEPPELIN_PROXY_URL);
+  }
+
+  public String getZeppelinProxyUser() {
+    return getString(ConfVars.ZEPPELIN_PROXY_USER);
+  }
+
+  public String getZeppelinProxyPassword() {
+    return getString(ConfVars.ZEPPELIN_PROXY_PASSWORD);
   }
 
   public Map<String, String> dumpConfigurations(ZeppelinConfiguration conf,
@@ -674,7 +716,8 @@ public class ZeppelinConfiguration extends XMLConfiguration {
         + "org.apache.zeppelin.beam.BeamInterpreter,"
         + "org.apache.zeppelin.scio.ScioInterpreter,"
         + "org.apache.zeppelin.groovy.GroovyInterpreter,"
-        + "org.apache.zeppelin.neo4j.Neo4jCypherInterpreter"
+        + "org.apache.zeppelin.neo4j.Neo4jCypherInterpreter,"
+        + "org.apache.zeppelin.sap.UniverseInterpreter"
         ),
     ZEPPELIN_INTERPRETER_JSON("zeppelin.interpreter.setting", "interpreter-setting.json"),
     ZEPPELIN_INTERPRETER_DIR("zeppelin.interpreter.dir", "interpreter"),
@@ -692,11 +735,13 @@ public class ZeppelinConfiguration extends XMLConfiguration {
     ZEPPELIN_RECOVERY_DIR("zeppelin.recovery.dir", "recovery"),
     ZEPPELIN_RECOVERY_STORAGE_CLASS("zeppelin.recovery.storage.class",
         "org.apache.zeppelin.interpreter.recovery.NullRecoveryStorage"),
+    ZEPPELIN_PLUGINS_DIR("zeppelin.plugins.dir", "plugins"),
 
     // use specified notebook (id) as homescreen
     ZEPPELIN_NOTEBOOK_HOMESCREEN("zeppelin.notebook.homescreen", null),
     // whether homescreen notebook will be hidden from notebook list or not
     ZEPPELIN_NOTEBOOK_HOMESCREEN_HIDE("zeppelin.notebook.homescreen.hide", false),
+    ZEPPELIN_NOTEBOOK_GCS_STORAGE_DIR("zeppelin.notebook.gcs.dir", ""),
     ZEPPELIN_NOTEBOOK_S3_BUCKET("zeppelin.notebook.s3.bucket", "zeppelin"),
     ZEPPELIN_NOTEBOOK_S3_ENDPOINT("zeppelin.notebook.s3.endpoint", "s3.amazonaws.com"),
     ZEPPELIN_NOTEBOOK_S3_USER("zeppelin.notebook.s3.user", "user"),
@@ -738,6 +783,7 @@ public class ZeppelinConfiguration extends XMLConfiguration {
     // i.e. http://localhost:8080
     ZEPPELIN_ALLOWED_ORIGINS("zeppelin.server.allowed.origins", "*"),
     ZEPPELIN_ANONYMOUS_ALLOWED("zeppelin.anonymous.allowed", true),
+    ZEPPELIN_USERNAME_FORCE_LOWERCASE("zeppelin.username.force.lowercase", false),
     ZEPPELIN_CREDENTIALS_PERSIST("zeppelin.credentials.persist", true),
     ZEPPELIN_CREDENTIALS_ENCRYPT_KEY("zeppelin.credentials.encryptKey", null),
     ZEPPELIN_WEBSOCKET_MAX_TEXT_MESSAGE_SIZE("zeppelin.websocket.max.text.message.size", "1024000"),
@@ -755,7 +801,7 @@ public class ZeppelinConfiguration extends XMLConfiguration {
     ZEPPELIN_INTERPRETER_PORTRANGE("zeppelin.interpreter.portRange", ":"),
 
     ZEPPELIN_INTERPRETER_LIFECYCLE_MANAGER_CLASS("zeppelin.interpreter.lifecyclemanager.class",
-        "org.apache.zeppelin.interpreter.lifecycle.TimeoutLifecycleManager"),
+        "org.apache.zeppelin.interpreter.lifecycle.NullLifecycleManager"),
     ZEPPELIN_INTERPRETER_LIFECYCLE_MANAGER_TIMEOUT_CHECK_INTERVAL(
         "zeppelin.interpreter.lifecyclemanager.timeout.checkinterval", 6000L),
     ZEPPELIN_INTERPRETER_LIFECYCLE_MANAGER_TIMEOUT_THRESHOLD(
@@ -766,7 +812,12 @@ public class ZeppelinConfiguration extends XMLConfiguration {
     ZEPPELIN_NOTEBOOK_GIT_REMOTE_URL("zeppelin.notebook.git.remote.url", ""),
     ZEPPELIN_NOTEBOOK_GIT_REMOTE_USERNAME("zeppelin.notebook.git.remote.username", "token"),
     ZEPPELIN_NOTEBOOK_GIT_REMOTE_ACCESS_TOKEN("zeppelin.notebook.git.remote.access-token", ""),
-    ZEPPELIN_NOTEBOOK_GIT_REMOTE_ORIGIN("zeppelin.notebook.git.remote.origin", "origin");
+    ZEPPELIN_NOTEBOOK_GIT_REMOTE_ORIGIN("zeppelin.notebook.git.remote.origin", "origin"),
+    ZEPPELIN_NOTEBOOK_CRON_ENABLE("zeppelin.notebook.cron.enable", false),
+    ZEPPELIN_NOTEBOOK_CRON_FOLDERS("zeppelin.notebook.cron.folders", null),
+    ZEPPELIN_PROXY_URL("zeppelin.proxy.url", null),
+    ZEPPELIN_PROXY_USER("zeppelin.proxy.user", null),
+    ZEPPELIN_PROXY_PASSWORD("zeppelin.proxy.password", null);
 
     private String varName;
     @SuppressWarnings("rawtypes")
